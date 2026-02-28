@@ -9,7 +9,7 @@ import {
   Loader2,
   ChevronRight
 } from 'lucide-react';
-import { processDocument, chatWithContext } from '../services/gemini';
+import { processDocument, chatWithContext } from '../services/deepseek';
 import { formatText } from '../utils/formatter';
 
 interface EditorProps {

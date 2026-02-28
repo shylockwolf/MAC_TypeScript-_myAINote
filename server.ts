@@ -2,6 +2,7 @@ import express from "express";
 import { createServer as createViteServer } from "vite";
 import Database from "better-sqlite3";
 import path from "path";
+import "dotenv/config";
 
 async function startServer() {
   const app = express();
@@ -66,6 +67,36 @@ async function startServer() {
     const { id } = req.params;
     db.prepare("DELETE FROM notes WHERE id = ?").run(id);
     res.json({ success: true });
+  });
+
+  app.delete("/api/notes", (req, res) => {
+    db.prepare("DELETE FROM tags").run();
+    db.prepare("DELETE FROM notes").run();
+    res.json({ success: true });
+  });
+
+  // DeepSeek API Proxy
+  app.post("/api/ai/chat", async (req, res) => {
+    const apiKey = process.env.DEEPSEEK_API_KEY;
+    if (!apiKey) {
+      return res.status(500).json({ error: "DEEPSEEK_API_KEY is not set" });
+    }
+
+    try {
+      const response = await fetch("https://api.deepseek.com/chat/completions", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${apiKey}`,
+        },
+        body: JSON.stringify(req.body),
+      });
+
+      const data = await response.json();
+      res.json(data);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
   });
 
   // Vite middleware for development
