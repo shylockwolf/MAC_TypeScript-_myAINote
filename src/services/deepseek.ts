@@ -11,38 +11,70 @@ interface DeepSeekResponse {
   }>;
 }
 
-async function callDeepSeek(prompt: string, jsonMode: boolean = false): Promise<string> {
+async function callDeepSeek(prompt: string, jsonMode: boolean = false, model: string = "deepseek-chat"): Promise<string> {
   debugLogger.addLog({
     type: 'request',
-    model: 'deepseek-chat',
+    model: model,
     content: prompt,
     metadata: { jsonMode }
   });
 
+  const controller = new AbortController();
+  const timeout = setTimeout(() => {
+    console.log('[DeepSeek] Request timeout, aborting...');
+    controller.abort();
+  }, 120000); // 120秒超时（reasoner模型需要更长时间）
+
   try {
+    console.log('[DeepSeek] Starting fetch request...');
+    console.log('[DeepSeek] API_URL:', API_URL);
+    console.log('[DeepSeek] Model:', model);
+    console.log('[DeepSeek] Prompt length:', prompt.length);
+    
+    const requestBody: any = {
+      model: model,
+      messages: [
+        {
+          role: "user",
+          content: prompt,
+        },
+      ],
+      max_tokens: 32000,
+    };
+    
+    // deepseek-reasoner 不支持 response_format 和 temperature
+    if (model === "deepseek-chat" && jsonMode) {
+      requestBody.response_format = { type: "json_object" };
+    }
+    
+    const requestBodyStr = JSON.stringify(requestBody);
+    console.log('[DeepSeek] Request body length:', requestBodyStr.length);
+    
     const response = await fetch(API_URL, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
       },
-      body: JSON.stringify({
-        model: "deepseek-chat",
-        messages: [
-          {
-            role: "user",
-            content: prompt,
-          },
-        ],
-        response_format: jsonMode ? { type: "json_object" } : undefined,
-      }),
+      body: requestBodyStr,
+      signal: controller.signal,
     });
 
+    clearTimeout(timeout);
+    console.log('[DeepSeek] Response received, status:', response.status);
+
     if (!response.ok) {
-      const errorData = await response.json();
-      const errorMsg = errorData.error || `HTTP ${response.status}`;
+      const errorText = await response.text();
+      console.error('[DeepSeek] Error response:', errorText);
+      let errorMsg = `HTTP ${response.status}`;
+      try {
+        const errorData = JSON.parse(errorText);
+        errorMsg = errorData.error || errorMsg;
+      } catch (e) {
+        errorMsg = errorText || errorMsg;
+      }
       debugLogger.addLog({
         type: 'error',
-        model: 'deepseek-chat',
+        model: model,
         content: errorMsg,
         metadata: { status: response.status }
       });
@@ -50,22 +82,29 @@ async function callDeepSeek(prompt: string, jsonMode: boolean = false): Promise<
     }
 
     const data: DeepSeekResponse = await response.json();
+    console.log('[DeepSeek] Response data:', data);
     const result = data.choices[0]?.message?.content || "";
 
     debugLogger.addLog({
       type: 'response',
-      model: 'deepseek-chat',
+      model: model,
       content: result,
       metadata: { promptLength: prompt.length, responseLength: result.length }
     });
 
     return result;
   } catch (error: any) {
+    clearTimeout(timeout);
+    console.error('[DeepSeek] Error:', error);
     debugLogger.addLog({
       type: 'error',
-      model: 'deepseek-chat',
+      model: model,
       content: error.message || String(error),
     });
+    
+    if (error.name === 'AbortError') {
+      throw new Error('AI 响应超时（120秒），请稍后重试');
+    }
     throw error;
   }
 }
@@ -174,16 +213,42 @@ ${content}`;
 }
 
 export async function chatWithContext(content: string, context: string, message: string): Promise<string> {
+  console.log('[chatWithContext] Called with message:', message);
+  console.log('[chatWithContext] Content length:', content?.length);
+  console.log('[chatWithContext] Context length:', context?.length);
+
+  // 使用 deepseek-reasoner 模型支持 128k 上下文（约 10 万汉字）
+  const maxContentLength = 80000; // 约 80k 字符，留 20k 给系统提示和回复
+  const maxContextLength = 80000; // 约 80k 字符
+  const truncatedContent = content?.length > maxContentLength 
+    ? content.substring(0, maxContentLength) + '\n...(内容已截断)' 
+    : content || '';
+  const truncatedContext = context?.length > maxContextLength 
+    ? context.substring(0, maxContextLength) + '\n...(上下文已截断)' 
+    : context || '';
+
   const prompt = `你是一个智能写作助手。
 上下文背景（之前的笔记记录）：
-${context}
+${truncatedContext}
 
 当前正在编辑的文档：
-${content}
+${truncatedContent}
 
 用户指令：${message}
 
 请根据上下文和当前文档内容，直接返回修改后的完整文档内容或回答用户的问题。如果是修改文档，请返回完整的 Markdown 文本。`;
 
-  return await callDeepSeek(prompt);
+  console.log('[chatWithContext] Prompt length:', prompt.length);
+  console.log('[chatWithContext] About to call callDeepSeek with deepseek-reasoner...');
+  
+  try {
+    // 使用 deepseek-reasoner 模型以获得更长的输出
+    const result = await callDeepSeek(prompt, false, "deepseek-reasoner");
+    console.log('[chatWithContext] callDeepSeek returned, result length:', result?.length);
+    console.log('[chatWithContext] callDeepSeek returned, result preview:', result?.substring(0, 100));
+    return result;
+  } catch (error) {
+    console.error('[chatWithContext] callDeepSeek error:', error);
+    throw error;
+  }
 }

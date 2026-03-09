@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { 
   Languages, 
   CheckCircle2, 
@@ -7,10 +7,15 @@ import {
   MessageSquare, 
   Type,
   Loader2,
-  ChevronRight
+  ChevronRight,
+  ChevronUp,
+  ChevronDown,
+  Terminal,
+  Trash2
 } from 'lucide-react';
 import { processDocument, chatWithContext } from '../services/deepseek';
 import { formatText } from '../utils/formatter';
+import { debugLogger, DebugLog } from '../services/debugLogger';
 
 interface EditorProps {
   content: string;
@@ -23,6 +28,26 @@ export const Editor: React.FC<EditorProps> = ({ content, onChange, context, onGe
   const [isProcessing, setIsProcessing] = useState(false);
   const [chatInput, setChatInput] = useState('');
   const [showChat, setShowChat] = useState(false);
+  const [chatError, setChatError] = useState<string | null>(null);
+  const [chatResponse, setChatResponse] = useState<string | null>(null);
+  const [showDebug, setShowDebug] = useState(false);
+  const [debugLogs, setDebugLogs] = useState<DebugLog[]>([]);
+  const debugContainerRef = useRef<HTMLDivElement>(null);
+
+  // Subscribe to debug logger
+  useEffect(() => {
+    const unsubscribe = debugLogger.subscribe((logs) => {
+      setDebugLogs(logs);
+    });
+    return unsubscribe;
+  }, []);
+
+  // Auto-scroll debug window
+  useEffect(() => {
+    if (debugContainerRef.current) {
+      debugContainerRef.current.scrollTop = debugContainerRef.current.scrollHeight;
+    }
+  }, [debugLogs]);
 
   const handleAction = async (action: 'translate' | 'proofread' | 'format') => {
     if (!content || isProcessing) return;
@@ -41,13 +66,23 @@ export const Editor: React.FC<EditorProps> = ({ content, onChange, context, onGe
     e.preventDefault();
     if (!chatInput.trim() || isProcessing) return;
     setIsProcessing(true);
+    setChatError(null);
+    setChatResponse(null);
     try {
+      console.log('[Editor] Sending chat request:', chatInput);
+      console.log('[Editor] Content:', content?.substring(0, 100));
+      console.log('[Editor] Context length:', context?.length);
       const result = await chatWithContext(content, context, chatInput);
+      console.log('[Editor] Chat result length:', result?.length);
+      console.log('[Editor] Chat result preview:', result?.substring(0, 100));
       onChange(result);
+      setChatResponse('✅ 处理完成');
       setChatInput('');
-    } catch (error) {
-      console.error(error);
+    } catch (error: any) {
+      console.error('Chat error:', error);
+      setChatError(error.message || 'AI 处理失败，请稍后重试');
     } finally {
+      console.log('[Editor] Setting isProcessing to false');
       setIsProcessing(false);
     }
   };
@@ -59,7 +94,7 @@ export const Editor: React.FC<EditorProps> = ({ content, onChange, context, onGe
   return (
     <div className="flex flex-col h-full bg-white rounded-2xl border border-black/5 shadow-sm overflow-hidden">
       {/* Toolbar */}
-      <div className="flex items-center justify-between px-4 py-2 border-bottom border-black/5 bg-gray-50/50">
+      <div className="flex items-center justify-between px-4 py-2 border-b border-black/5 bg-gray-50/50">
         <div className="flex items-center gap-1">
           <button
             onClick={() => handleAction('translate')}
@@ -118,14 +153,39 @@ export const Editor: React.FC<EditorProps> = ({ content, onChange, context, onGe
               <MessageSquare className="w-4 h-4 text-emerald-600" />
               <span className="text-sm font-semibold">对话式编辑</span>
             </div>
-            <div className="flex-1 p-4 overflow-auto text-xs text-gray-500 space-y-3">
-              <p>你可以让 AI 帮你：</p>
-              <ul className="list-disc list-inside space-y-1">
-                <li>“把这段话改得更幽默一点”</li>
-                <li>“根据上下文补充一下技术细节”</li>
-                <li>“总结一下这篇文档的核心观点”</li>
-              </ul>
+            
+            <div className="flex-1 p-4 overflow-auto">
+              {!chatResponse && !chatError && (
+                <div className="text-xs text-gray-500 space-y-3">
+                  <p>你可以让 AI 帮你：</p>
+                  <ul className="list-disc list-inside space-y-1">
+                    <li>"把这段话改得更幽默一点"</li>
+                    <li>"根据上下文补充一下技术细节"</li>
+                    <li>"总结一下这篇文档的核心观点"</li>
+                  </ul>
+                </div>
+              )}
+              
+              {isProcessing && (
+                <div className="flex items-center gap-2 text-xs text-emerald-600">
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                  <span>AI 正在处理中...</span>
+                </div>
+              )}
+              
+              {chatError && (
+                <div className="p-3 bg-red-50 border border-red-200 rounded-lg text-xs text-red-700">
+                  {chatError}
+                </div>
+              )}
+              
+              {chatResponse && (
+                <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-lg text-xs text-emerald-700">
+                  {chatResponse}
+                </div>
+              )}
             </div>
+            
             <form onSubmit={handleChat} className="p-4 border-t border-black/5">
               <div className="relative">
                 <input
@@ -157,6 +217,74 @@ export const Editor: React.FC<EditorProps> = ({ content, onChange, context, onGe
           </div>
         )}
       </div>
+
+      {/* Debug Window Toggle Button */}
+      <div className="border-t border-black/5 bg-gray-50/50 px-4 py-1.5 flex items-center justify-between">
+        <button
+          onClick={() => setShowDebug(!showDebug)}
+          className="flex items-center gap-2 text-xs text-gray-500 hover:text-gray-700 transition-colors"
+        >
+          <Terminal className="w-3.5 h-3.5" />
+          <span>AI 调试窗口</span>
+          {showDebug ? <ChevronDown className="w-3.5 h-3.5" /> : <ChevronUp className="w-3.5 h-3.5" />}
+        </button>
+        {debugLogs.length > 0 && (
+          <span className="text-[10px] text-gray-400">{debugLogs.length} 条日志</span>
+        )}
+      </div>
+
+      {/* Debug Window */}
+      {showDebug && (
+        <div className="border-t border-black/5 bg-gray-900 max-h-48 overflow-hidden flex flex-col">
+          <div className="px-3 py-1.5 border-b border-gray-700 flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <Terminal className="w-3.5 h-3.5 text-emerald-400" />
+              <span className="text-xs font-medium text-gray-300">AI 交互日志</span>
+            </div>
+            <button
+              onClick={() => debugLogger.clearLogs()}
+              className="text-xs text-gray-500 hover:text-gray-300 transition-colors flex items-center gap-1"
+            >
+              <Trash2 className="w-3 h-3" />
+              清除
+            </button>
+          </div>
+          <div 
+            ref={debugContainerRef}
+            className="flex-1 overflow-y-auto p-3 space-y-2 custom-scrollbar"
+          >
+            {debugLogs.length === 0 ? (
+              <div className="text-xs text-gray-500 text-center py-4">
+                暂无 AI 交互日志
+              </div>
+            ) : (
+              debugLogs.map((log) => (
+                <div key={log.id} className="font-mono text-xs">
+                  <div className="flex items-start gap-2">
+                    <span className="text-gray-500 flex-shrink-0">{log.timestamp}</span>
+                    <span className={`flex-shrink-0 ${
+                      log.type === 'request' ? 'text-blue-400' :
+                      log.type === 'response' ? 'text-emerald-400' :
+                      'text-red-400'
+                    }`}>
+                      [{log.type.toUpperCase()}]
+                    </span>
+                    <span className="text-gray-400 flex-shrink-0">({log.model})</span>
+                  </div>
+                  <div className="mt-1 text-gray-300 break-all whitespace-pre-wrap pl-16">
+                    {log.content.length > 500 ? log.content.substring(0, 500) + '...' : log.content}
+                  </div>
+                  {log.metadata && Object.keys(log.metadata).length > 0 && (
+                    <div className="text-gray-500 text-[10px] pl-16 mt-0.5">
+                      {Object.entries(log.metadata).map(([k, v]) => `${k}: ${v}`).join(' | ')}
+                    </div>
+                  )}
+                </div>
+              ))
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 };
