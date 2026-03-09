@@ -51,9 +51,9 @@ export default function App() {
       console.log('Analysis result:', analysis);
       
       const allTags: Tag[] = [
+        { key: 'category', value: analysis.category },
         { key: 'date', value: new Date().toLocaleDateString() },
         { key: 'topic', value: analysis.topic },
-        { key: 'category', value: analysis.category },
         ...analysis.people.map(p => ({ key: 'people', value: p })),
         ...analysis.subjects.map(s => ({ key: 'subject', value: s })),
         ...analysis.objects.map(o => ({ key: 'object', value: o }))
@@ -66,15 +66,18 @@ export default function App() {
         if (value.length < 2) return false;
         if (ignoreWords.has(value)) return false;
         if (value === analysis.topic) return false;
-        if (value === analysis.category) return false;
         return true;
       });
 
       const uniqueTags = Array.from(
-        new Map(filteredTags.map(tag => [tag.key + ':' + tag.value, tag])).values()
+        new Map(filteredTags.map(tag => [tag.value, tag])).values()
       );
 
-      const limitedTags = uniqueTags.slice(0, 8);
+      const categoryTag = uniqueTags.find(t => t.key === 'category');
+      const otherTags = uniqueTags.filter(t => t.key !== 'category');
+      const reorderedTags = categoryTag ? [categoryTag, ...otherTags] : uniqueTags;
+
+      const limitedTags = reorderedTags.slice(0, 8);
 
       const res = await fetch('/api/notes', {
         method: 'POST',
@@ -83,11 +86,6 @@ export default function App() {
       });
       const newNote = await res.json();
       setNotes([newNote, ...notes]);
-      setSelectedNotes(prev => {
-        const newSet = new Set(prev);
-        newSet.add(newNote.id);
-        return newSet;
-      });
     } catch (err: any) {
       console.error('Error adding note:', err);
       setError(err.message || '添加笔记失败，请检查 API 配置');

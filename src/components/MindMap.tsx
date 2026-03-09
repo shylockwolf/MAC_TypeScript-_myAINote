@@ -57,7 +57,7 @@ export const MindMap: React.FC<MindMapProps> = ({ data, onRegenerate, onClear })
       .attr("x", (d: any) => d.children ? -8 : 8)
       .style("text-anchor", (d: any) => d.children ? "end" : "start")
       .style("font-size", "12px")
-      .style("font-family", "sans-serif")
+      .style("font-family", "Arial, 'Microsoft YaHei', 'SimSun', sans-serif")
       .text((d: any) => d.data.name);
 
   }, [data]);
@@ -67,8 +67,10 @@ export const MindMap: React.FC<MindMapProps> = ({ data, onRegenerate, onClear })
 
     const svgElement = svgRef.current;
     
+    // 强制设置 UTF-8 编码
     const svgData = new XMLSerializer().serializeToString(svgElement);
-    const svgBlob = new Blob([svgData], { type: 'image/svg+xml;charset=utf-8' });
+    const encodedSvg = svgData.replace(/<\?xml[^\?]*\?>/, '<?xml version="1.0" encoding="UTF-8"?>');
+    const svgBlob = new Blob([encodedSvg], { type: 'image/svg+xml;charset=utf-8' });
     const url = URL.createObjectURL(svgBlob);
     
     const img = new Image();
@@ -81,6 +83,8 @@ export const MindMap: React.FC<MindMapProps> = ({ data, onRegenerate, onClear })
       canvas.height = 800 + padding * 2;
       
       if (ctx) {
+        // 设置 canvas 字体以支持中文
+        ctx.font = '12px Arial, "Microsoft YaHei", "SimSun", sans-serif';
         ctx.fillStyle = 'white';
         ctx.fillRect(0, 0, canvas.width, canvas.height);
         ctx.drawImage(img, padding, padding);
