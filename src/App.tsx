@@ -5,7 +5,6 @@ import { ChatInput } from './components/ChatInput';
 import { NoteList } from './components/NoteList';
 import { Editor } from './components/Editor';
 import { MindMap } from './components/MindMap';
-import { DebugPanel } from './components/DebugPanel';
 import { 
   Lightbulb, 
   Library, 
@@ -16,8 +15,7 @@ import {
   ChevronLeft,
   ChevronRight,
   Filter,
-  Trash2,
-  Bug
+  Trash2
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 
@@ -29,7 +27,6 @@ export default function App() {
   const [activeTab, setActiveTab] = useState<'notes' | 'editor' | 'mindmap'>('notes');
   const [mindMapData, setMindMapData] = useState<any>(null);
   const [isGeneratingMindMap, setIsGeneratingMindMap] = useState(false);
-  const [isDebugOpen, setIsDebugOpen] = useState(false);
   const [showClearConfirm, setShowClearConfirm] = useState(false);
   const [isAddingNote, setIsAddingNote] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -161,6 +158,10 @@ export default function App() {
     }
   };
 
+  const handleClearMindMap = () => {
+    setMindMapData(null);
+  };
+
   return (
     <div className="min-h-screen bg-[#F8F9FA] text-gray-900 font-sans selection:bg-emerald-100">
       {/* Header */}
@@ -204,18 +205,6 @@ export default function App() {
           >
             <Trash2 className="w-4 h-4" />
             清除
-          </button>
-          <button
-            onClick={() => setIsDebugOpen(!isDebugOpen)}
-            className={`flex items-center gap-2 px-3 py-2 rounded-lg transition-colors text-sm font-medium ${
-              isDebugOpen 
-                ? 'bg-gray-800 text-white' 
-                : 'text-gray-600 hover:bg-gray-100'
-            }`}
-            title="Debug"
-          >
-            <Bug className="w-4 h-4" />
-            Debug
           </button>
         </div>
       </header>
@@ -337,7 +326,7 @@ export default function App() {
                     <p className="text-gray-500 font-medium">正在解析文档结构...</p>
                   </div>
                 ) : mindMapData ? (
-                  <MindMap data={mindMapData} />
+                  <MindMap data={mindMapData} onRegenerate={handleGenerateMindMap} onClear={handleClearMindMap} />
                 ) : (
                   <div className="h-full flex flex-col items-center justify-center bg-white rounded-2xl border border-black/5 text-gray-400">
                     <Network className="w-12 h-12 mb-4 opacity-20" />
@@ -381,9 +370,6 @@ export default function App() {
           </div>
         </div>
       )}
-
-      {/* Debug Panel */}
-      <DebugPanel isOpen={isDebugOpen} onToggle={() => setIsDebugOpen(!isDebugOpen)} />
     </div>
   );
 }
