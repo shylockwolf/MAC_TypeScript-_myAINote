@@ -159,7 +159,7 @@ ${content}`;
       break;
   }
 
-  return await callDeepSeek(prompt);
+  return await callDeepSeek(prompt, action === 'mindmap');
 }
 
 export async function chatWithContext(content: string, context: string, message: string): Promise<string> {
