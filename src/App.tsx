@@ -24,6 +24,7 @@ import { motion, AnimatePresence } from 'motion/react';
 export default function App() {
   const [notes, setNotes] = useState<Note[]>([]);
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
+  const [selectedNotes, setSelectedNotes] = useState<Set<number>>(new Set());
   const [docContent, setDocContent] = useState('');
   const [activeTab, setActiveTab] = useState<'notes' | 'editor' | 'mindmap'>('notes');
   const [mindMapData, setMindMapData] = useState<any>(null);
@@ -41,6 +42,7 @@ export default function App() {
     const res = await fetch('/api/notes');
     const data = await res.json();
     setNotes(data);
+    setSelectedNotes(new Set());
   };
 
   const handleAddNote = async (content: string) => {
@@ -50,20 +52,45 @@ export default function App() {
       console.log('Starting analyzeNote...');
       const analysis = await analyzeNote(content);
       console.log('Analysis result:', analysis);
-      const tags: Tag[] = [
+      
+      const allTags: Tag[] = [
         { key: 'date', value: new Date().toLocaleDateString() },
         { key: 'topic', value: analysis.topic },
         { key: 'category', value: analysis.category },
-        ...analysis.people.map(p => ({ key: 'people', value: p }))
+        ...analysis.people.map(p => ({ key: 'people', value: p })),
+        ...analysis.subjects.map(s => ({ key: 'subject', value: s })),
+        ...analysis.objects.map(o => ({ key: 'object', value: o }))
       ];
+
+      const ignoreWords = new Set(['我', '你', '他', '她', '它', '我们', '你们', '他们', '这个', '那个', '这些', '那些', '什么', '怎么', '为什么', '因为', '所以', '但是', '而且', '然后', '还是', '已经', '开始', '一直', '总是', '完全', '非常', '特别', '比较', '应该', '可能', '需要', '可以', '能够', '想要', '觉得', '感觉', '发现', '问题', '情况', '时候', '现在', '目前', '之前', '之后', '以上', '以下', '关于', '对于', '根据', '通过', '由于', '除了', '包括', '以及', '或者', '和', '与', '的', '了', '着', '过', '到', '在', '从', '把', '被', '让', '给', '为', '对', '向', '往', '往', '去', '来', '上', '下', '里', '外', '内', '前', '后', '左', '右', '中', '间', '旁', '边', '侧', '顶', '底', '头', '尾', '首', '末', '初', '终', '始', '终', '刚', '才', '就', '都', '也', '又', '再', '还', '更', '最', '太', '很', '好', '坏', '多', '少', '大', '小', '长', '短', '新', '旧', '真', '假', '是', '否', '有', '无', '没', '不', '没']);
+
+      const filteredTags = allTags.filter(tag => {
+        const value = tag.value.trim();
+        if (value.length < 2) return false;
+        if (ignoreWords.has(value)) return false;
+        if (value === analysis.topic) return false;
+        if (value === analysis.category) return false;
+        return true;
+      });
+
+      const uniqueTags = Array.from(
+        new Map(filteredTags.map(tag => [tag.key + ':' + tag.value, tag])).values()
+      );
+
+      const limitedTags = uniqueTags.slice(0, 8);
 
       const res = await fetch('/api/notes', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ content, tags })
+        body: JSON.stringify({ content, summary: analysis.summary, tags: limitedTags })
       });
       const newNote = await res.json();
       setNotes([newNote, ...notes]);
+      setSelectedNotes(prev => {
+        const newSet = new Set(prev);
+        newSet.add(newNote.id);
+        return newSet;
+      });
     } catch (err: any) {
       console.error('Error adding note:', err);
       setError(err.message || '添加笔记失败，请检查 API 配置');
@@ -110,7 +137,12 @@ export default function App() {
   }, [notes]);
 
   const handleCollectToEditor = () => {
-    const collectedContent = filteredNotes.map(n => n.content).join('\n\n---\n\n');
+    const selectedNotesList = notes.filter(n => selectedNotes.has(n.id));
+    const collectedContent = selectedNotesList.map((n, index) => {
+      const num = index + 1;
+      const summary = n.summary ? `${num}. ## ${n.summary}\n\n` : `${num}. `;
+      return `${summary}${n.content}`;
+    }).join('\n\n────────────────────────────────────────────────────────\n\n');
     setDocContent(collectedContent);
     setActiveTab('editor');
   };
@@ -230,7 +262,7 @@ export default function App() {
                 className="mt-4 w-full bg-emerald-600 text-white py-3 rounded-xl text-sm font-bold shadow-lg shadow-emerald-200 hover:bg-emerald-700 transition-all flex items-center justify-center gap-2"
               >
                 <Plus className="w-4 h-4" />
-                汇总到编辑器 ({filteredNotes.length})
+                汇总到编辑器 ({selectedNotes.size})
               </button>
             )}
           </div>
@@ -259,6 +291,16 @@ export default function App() {
                     onDelete={handleDeleteNote}
                     selectedTags={selectedTags}
                     onTagClick={toggleTag}
+                    selectedNotes={selectedNotes}
+                    onToggleSelect={(id) => setSelectedNotes(prev => {
+                      const newSet = new Set(prev);
+                      if (newSet.has(id)) {
+                        newSet.delete(id);
+                      } else {
+                        newSet.add(id);
+                      }
+                      return newSet;
+                    })}
                   />
                 </div>
               </motion.div>

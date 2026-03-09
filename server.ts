@@ -14,6 +14,7 @@ async function startServer() {
     CREATE TABLE IF NOT EXISTS notes (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       content TEXT NOT NULL,
+      summary TEXT,
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
       updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
     );
@@ -25,6 +26,13 @@ async function startServer() {
       FOREIGN KEY(note_id) REFERENCES notes(id) ON DELETE CASCADE
     );
   `);
+
+  // Add summary column if not exists (for existing databases)
+  try {
+    db.prepare("ALTER TABLE notes ADD COLUMN summary TEXT").run();
+  } catch (e) {
+    // Column already exists, ignore
+  }
 
   app.use(express.json());
 
@@ -39,9 +47,9 @@ async function startServer() {
   });
 
   app.post("/api/notes", (req, res) => {
-    const { content, tags } = req.body;
-    const insertNote = db.prepare("INSERT INTO notes (content) VALUES (?)");
-    const result = insertNote.run(content);
+    const { content, summary, tags } = req.body;
+    const insertNote = db.prepare("INSERT INTO notes (content, summary) VALUES (?, ?)");
+    const result = insertNote.run(content, summary);
     const noteId = result.lastInsertRowid;
 
     if (tags && Array.isArray(tags)) {

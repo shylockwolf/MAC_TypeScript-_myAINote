@@ -6,6 +6,7 @@ export interface Tag {
 export interface Note {
   id: number;
   content: string;
+  summary: string;
   created_at: string;
   updated_at: string;
   tags: Tag[];
@@ -18,4 +19,6 @@ export interface AIAnalysis {
   people: string[];
   category: Category;
   summary: string;
+  subjects: string[];
+  objects: string[];
 }
