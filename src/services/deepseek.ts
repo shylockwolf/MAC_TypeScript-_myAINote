@@ -11,12 +11,20 @@ interface DeepSeekResponse {
   }>;
 }
 
+// DeepSeek 上下文限制 128K
+const MAX_CONTEXT_LENGTH = 128000;
+
 async function callDeepSeek(prompt: string, jsonMode: boolean = false, model: string = "deepseek-chat"): Promise<string> {
+  // 截断过长的提示词
+  const truncatedPrompt = prompt.length > MAX_CONTEXT_LENGTH 
+    ? prompt.substring(0, MAX_CONTEXT_LENGTH) + "\n[内容已截断...]"
+    : prompt;
+  
   debugLogger.addLog({
     type: 'request',
     model: model,
-    content: prompt,
-    metadata: { jsonMode }
+    content: truncatedPrompt,
+    metadata: { jsonMode, originalLength: prompt.length, truncatedLength: truncatedPrompt.length }
   });
 
   const controller = new AbortController();
@@ -29,14 +37,14 @@ async function callDeepSeek(prompt: string, jsonMode: boolean = false, model: st
     console.log('[DeepSeek] Starting fetch request...');
     console.log('[DeepSeek] API_URL:', API_URL);
     console.log('[DeepSeek] Model:', model);
-    console.log('[DeepSeek] Prompt length:', prompt.length);
+    console.log('[DeepSeek] Prompt length:', truncatedPrompt.length);
     
     const requestBody: any = {
       model: model,
       messages: [
         {
           role: "user",
-          content: prompt,
+          content: truncatedPrompt,
         },
       ],
       max_tokens: 32000,

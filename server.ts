@@ -34,7 +34,8 @@ async function startServer() {
     // Column already exists, ignore
   }
 
-  app.use(express.json());
+  app.use(express.json({ limit: '100mb' }));
+  app.use(express.urlencoded({ limit: '100mb', extended: true }));
 
   // API Routes
   app.get("/api/notes", (req, res) => {

@@ -9,7 +9,27 @@ interface SearchResult {
   snippet: string;
 }
 
+interface WebResearcherState {
+  query: string;
+  size: number;
+  isSearching: boolean;
+  searchStatus: string;
+  results: SearchResult[];
+  webError: string | null;
+  debugSteps: DebugStep[];
+  keywords: string[];
+  selectedResults: Set<number>;
+  addProgress: {
+    isAdding: boolean;
+    current: number;
+    total: number;
+    currentTitle: string;
+  };
+}
+
 interface WebResearcherProps {
+  state: WebResearcherState;
+  setState: React.Dispatch<React.SetStateAction<WebResearcherState>>;
   onAddToNotes?: (result: SearchResult) => void;
   onNotesUpdated?: () => void;
 }
@@ -20,16 +40,8 @@ interface DebugStep {
   timestamp: string;
 }
 
-export const WebResearcher: React.FC<WebResearcherProps> = ({ onAddToNotes, onNotesUpdated }) => {
-  const [query, setQuery] = useState('');
-  const [size, setSize] = useState(8);
-  const [isSearching, setIsSearching] = useState(false);
-  const [searchStatus, setSearchStatus] = useState('');
-  const [results, setResults] = useState<SearchResult[]>([]);
-  const [error, setError] = useState<string | null>(null);
-  const [debugSteps, setDebugSteps] = useState<DebugStep[]>([]);
-  const [keywords, setKeywords] = useState<string[]>([]);
-  const [selectedResults, setSelectedResults] = useState<Set<number>>(new Set());
+export const WebResearcher: React.FC<WebResearcherProps> = ({ state, setState, onAddToNotes, onNotesUpdated }) => {
+  const { query, size, isSearching, searchStatus, results, webError, debugSteps, keywords, selectedResults, addProgress } = state;
   const debugContainerRef = useRef<HTMLDivElement>(null);
 
   // Auto-scroll debug window to bottom when new steps are added
@@ -41,7 +53,10 @@ export const WebResearcher: React.FC<WebResearcherProps> = ({ onAddToNotes, onNo
 
   const addDebugStep = (step: string, content: string) => {
     const timestamp = new Date().toLocaleTimeString('zh-CN', { hour12: false });
-    setDebugSteps(prev => [...prev, { step, content, timestamp }]);
+    setState(prev => ({
+      ...prev,
+      debugSteps: [...prev.debugSteps, { step, content, timestamp }]
+    }));
   };
 
   const extractKeywords = async (question: string): Promise<string[]> => {
@@ -88,20 +103,23 @@ export const WebResearcher: React.FC<WebResearcherProps> = ({ onAddToNotes, onNo
   const handleSearch = async () => {
     if (!query.trim()) return;
 
-    setIsSearching(true);
-    setResults([]);
-    setError(null);
-    setDebugSteps([]);
-    setKeywords([]);
+    setState(prev => ({
+      ...prev,
+      isSearching: true,
+      results: [],
+      webError: null,
+      debugSteps: [],
+      keywords: []
+    }));
 
     try {
       // Step 1: Extract keywords using AI
-      setSearchStatus('正在裂变关键词...');
+      setState(prev => ({ ...prev, searchStatus: '正在裂变关键词...' }));
       const extractedKeywords = await extractKeywords(query.trim());
-      setKeywords(extractedKeywords);
+      setState(prev => ({ ...prev, keywords: extractedKeywords }));
 
       // Step 2: Search using combined keywords
-      setSearchStatus('正在搜索...');
+      setState(prev => ({ ...prev, searchStatus: '正在搜索...' }));
       const searchQuery = extractedKeywords.join(' ');
       addDebugStep('搜索请求', `搜索词: "${searchQuery}"`);
       
@@ -145,28 +163,40 @@ export const WebResearcher: React.FC<WebResearcherProps> = ({ onAddToNotes, onNo
         });
       }
 
-      setResults(searchResults);
-      setSelectedResults(new Set()); // Clear selections on new search
-      setSearchStatus(`搜索完成，找到 ${searchResults.length} 条结果`);
+      setState(prev => ({
+        ...prev,
+        results: searchResults,
+        selectedResults: new Set(), // Clear selections on new search
+        searchStatus: `搜索完成，找到 ${searchResults.length} 条结果`
+      }));
       addDebugStep('完成', `成功获取 ${searchResults.length} 条搜索结果`);
     } catch (err: any) {
-      setError(err.message || '搜索过程中发生错误');
-      setSearchStatus('搜索失败');
+      setState(prev => ({
+        ...prev,
+        webError: err.message || '搜索过程中发生错误',
+        searchStatus: '搜索失败'
+      }));
       addDebugStep('错误', err.message || '未知错误');
     } finally {
-      setIsSearching(false);
+      setState(prev => ({
+        ...prev,
+        isSearching: false
+      }));
     }
   };
 
   const toggleSelection = (position: number) => {
-    setSelectedResults(prev => {
-      const newSet = new Set(prev);
+    setState(prev => {
+      const newSet = new Set(prev.selectedResults);
       if (newSet.has(position)) {
         newSet.delete(position);
       } else {
         newSet.add(position);
       }
-      return newSet;
+      return {
+        ...prev,
+        selectedResults: newSet
+      };
     });
   };
 
@@ -176,7 +206,30 @@ export const WebResearcher: React.FC<WebResearcherProps> = ({ onAddToNotes, onNo
     const selectedItems = results.filter(r => selectedResults.has(r.position));
     addDebugStep('添加到笔记', `开始处理 ${selectedItems.length} 个选中项...`);
 
-    for (const item of selectedItems) {
+    // Initialize progress
+    setState(prev => ({
+      ...prev,
+      addProgress: {
+        isAdding: true,
+        current: 0,
+        total: selectedItems.length,
+        currentTitle: ''
+      }
+    }));
+
+    for (let i = 0; i < selectedItems.length; i++) {
+      const item = selectedItems[i];
+      
+      // Update progress at the start of each item
+      setState(prev => ({
+        ...prev,
+        addProgress: {
+          ...prev.addProgress,
+          current: i + 1,
+          currentTitle: item.title
+        }
+      }));
+      
       addDebugStep('提取内容', `正在提取: "${item.title}"`);
       
       try {
@@ -284,7 +337,16 @@ export const WebResearcher: React.FC<WebResearcherProps> = ({ onAddToNotes, onNo
     }
 
     addDebugStep('完成', `已完成 ${selectedItems.length} 项的添加`);
-    setSelectedResults(new Set()); // Clear selections
+    setState(prev => ({
+      ...prev,
+      selectedResults: new Set(), // Clear selections
+      addProgress: {
+        isAdding: false,
+        current: 0,
+        total: 0,
+        currentTitle: ''
+      }
+    }));
     onNotesUpdated?.(); // Refresh notes list in App
   };
 
@@ -293,9 +355,9 @@ export const WebResearcher: React.FC<WebResearcherProps> = ({ onAddToNotes, onNo
       {/* Left Panel - Search Config (1/5 width) */}
       <div className="w-1/5 flex flex-col gap-4 overflow-hidden">
         {/* Error message */}
-        {error && (
+        {webError && (
           <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-xl text-sm flex-shrink-0">
-            <strong>错误：</strong>{error}
+            <strong>错误：</strong>{webError}
           </div>
         )}
 
@@ -315,7 +377,7 @@ export const WebResearcher: React.FC<WebResearcherProps> = ({ onAddToNotes, onNo
               <input
                 type="text"
                 value={query}
-                onChange={(e) => setQuery(e.target.value)}
+                onChange={(e) => setState(prev => ({ ...prev, query: e.target.value }))}
                 placeholder="输入你想要调查的内容..."
                 className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition-all"
                 disabled={isSearching}
@@ -332,7 +394,7 @@ export const WebResearcher: React.FC<WebResearcherProps> = ({ onAddToNotes, onNo
                 min={1}
                 max={20}
                 value={size}
-                onChange={(e) => setSize(Math.min(20, Math.max(1, parseInt(e.target.value) || 8)))}
+                onChange={(e) => setState(prev => ({ ...prev, size: Math.min(20, Math.max(1, parseInt(e.target.value) || 8)) }))}
                 className="w-24 bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition-all"
                 disabled={isSearching}
               />
@@ -366,6 +428,11 @@ export const WebResearcher: React.FC<WebResearcherProps> = ({ onAddToNotes, onNo
               <Terminal className="w-4 h-4 text-emerald-400" />
               <span className="text-xs font-bold text-gray-300">调试窗口</span>
             </div>
+            {searchStatus && (
+              <span className="text-xs text-emerald-400 bg-emerald-900/30 px-2 py-0.5 rounded">
+                {searchStatus}
+              </span>
+            )}
           </div>
           
           {/* Keywords in debug window */}
@@ -415,17 +482,29 @@ export const WebResearcher: React.FC<WebResearcherProps> = ({ onAddToNotes, onNo
             搜索结果
           </h3>
           <div className="flex items-center gap-3">
-            {selectedResults.size > 0 && (
+            {addProgress.isAdding ? (
+              <span className="text-xs bg-amber-50 text-amber-700 px-2 py-1 rounded-full border border-amber-200 flex items-center gap-1.5">
+                <Loader2 className="w-3 h-3 animate-spin" />
+                正在添加 {addProgress.current}/{addProgress.total}
+              </span>
+            ) : selectedResults.size > 0 && (
               <span className="text-xs bg-emerald-50 text-emerald-700 px-2 py-1 rounded-full border border-emerald-200">
                 已选择 {selectedResults.size} 项
               </span>
             )}
             <button
               onClick={handleAddToNotes}
-              className="text-xs bg-emerald-600 text-white px-3 py-1.5 rounded-lg font-medium hover:bg-emerald-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-              disabled={selectedResults.size === 0}
+              className="text-xs bg-emerald-600 text-white px-3 py-1.5 rounded-lg font-medium hover:bg-emerald-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1.5"
+              disabled={selectedResults.size === 0 || addProgress.isAdding}
             >
-              添加到笔记
+              {addProgress.isAdding ? (
+                <>
+                  <Loader2 className="w-3 h-3 animate-spin" />
+                  添加中...
+                </>
+              ) : (
+                '添加到笔记'
+              )}
             </button>
           </div>
         </div>

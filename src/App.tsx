@@ -32,6 +32,23 @@ export default function App() {
   const [showClearConfirm, setShowClearConfirm] = useState(false);
   const [isAddingNote, setIsAddingNote] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [webResearcherState, setWebResearcherState] = useState({
+    query: '',
+    size: 8,
+    isSearching: false,
+    searchStatus: '',
+    results: [],
+    webError: null,
+    debugSteps: [],
+    keywords: [],
+    selectedResults: new Set<number>(),
+    addProgress: {
+      isAdding: false,
+      current: 0,
+      total: 0,
+      currentTitle: ''
+    }
+  });
 
   useEffect(() => {
     fetchNotes();
@@ -199,14 +216,62 @@ export default function App() {
         </nav>
 
         <div className="flex items-center gap-2">
-          <button
-            onClick={() => setShowClearConfirm(true)}
-            className="flex items-center gap-2 px-3 py-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors text-sm font-medium"
-            title="清除所有记录"
-          >
-            <Trash2 className="w-4 h-4" />
-            清除
-          </button>
+          {activeTab === 'investigator' && (
+            <button
+              onClick={() => setWebResearcherState({
+                query: '',
+                size: 8,
+                isSearching: false,
+                searchStatus: '',
+                results: [],
+                webError: null,
+                debugSteps: [],
+                keywords: [],
+                selectedResults: new Set<number>(),
+                addProgress: {
+                  isAdding: false,
+                  current: 0,
+                  total: 0,
+                  currentTitle: ''
+                }
+              })}
+              className="flex items-center gap-2 px-3 py-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors text-sm font-medium"
+              title="清除搜索结果"
+            >
+              <Trash2 className="w-4 h-4" />
+              清除
+            </button>
+          )}
+          {activeTab === 'notes' && (
+            <button
+              onClick={() => setShowClearConfirm(true)}
+              className="flex items-center gap-2 px-3 py-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors text-sm font-medium"
+              title="清除所有笔记"
+            >
+              <Trash2 className="w-4 h-4" />
+              清除
+            </button>
+          )}
+          {activeTab === 'editor' && (
+            <button
+              onClick={() => setDocContent('')}
+              className="flex items-center gap-2 px-3 py-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors text-sm font-medium"
+              title="清空编辑器"
+            >
+              <Trash2 className="w-4 h-4" />
+              清除
+            </button>
+          )}
+          {activeTab === 'mindmap' && (
+            <button
+              onClick={() => setMindMapData(null)}
+              className="flex items-center gap-2 px-3 py-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors text-sm font-medium"
+              title="清除思维导图"
+            >
+              <Trash2 className="w-4 h-4" />
+              清除
+            </button>
+          )}
         </div>
       </header>
 
@@ -265,14 +330,18 @@ export default function App() {
           <AnimatePresence mode="wait">
             {activeTab === 'investigator' && (
               <motion.div
-                key="investigator"
-                initial={{ opacity: 0, y: 10 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -10 }}
-                className="h-full"
-              >
-                <WebResearcher onNotesUpdated={fetchNotes} />
-              </motion.div>
+            key="investigator"
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -10 }}
+            className="h-full"
+          >
+            <WebResearcher 
+              state={webResearcherState}
+              setState={setWebResearcherState}
+              onNotesUpdated={fetchNotes} 
+            />
+          </motion.div>
             )}
 
             {activeTab === 'notes' && (
